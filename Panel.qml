@@ -802,6 +802,51 @@ Panel {
             }
           }
 
+          // ---------- Layout (Win+P style) ----------
+          PanelSeparator {
+            visible: root.displays.length > 1
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(10)
+            visible: root.displays.length > 1
+
+            PanelSectionHeader {
+              text: "LAYOUT"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+            }
+
+            Flow {
+              width: parent.width
+              spacing: Style.space(8)
+
+              Repeater {
+                model: [
+                  { label: "󰍺 Extend →", mode: "extend-right" },
+                  { label: "← Extend", mode: "extend-left" },
+                  { label: "󰍹 Mirror", mode: "mirror" },
+                  { label: "󰍹 TV only", mode: "tv" },
+                  { label: "󰌢 Laptop only", mode: "laptop" }
+                ]
+
+                Button {
+                  required property var modelData
+                  text: modelData.label
+                  fontSize: Style.font.caption
+                  foreground: root.bar.foreground
+                  fontFamily: root.bar.fontFamily
+                  horizontalPadding: Style.spacing.sm
+                  verticalPadding: Style.spacing.controlPaddingY
+                  bordered: true
+                  onClicked: root.setLayout(modelData.mode)
+                }
+              }
+            }
+          }
+
           // ---------- Monitors ----------
           PanelSeparator {
             visible: root.displays.length > 1
