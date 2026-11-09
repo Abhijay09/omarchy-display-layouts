@@ -1,5 +1,7 @@
 # Display Layouts
 
+<img src="preview.png" alt="Display popup with the LAYOUT row" width="320" align="right">
+
 An Omarchy bar widget that adds Windows `Win+P` style layouts to the Display popup.
 
 I use a laptop and a TV at the same time: a movie on the TV, work on the laptop.
@@ -16,7 +18,7 @@ a **LAYOUT** row added.
 | Laptop only | External screen off |
 
 Everything else (brightness, text size, scale, the DISPLAYS list) is unchanged.
-With only one screen connected the buttons are dimmed.
+With only one screen connected the buttons are dimmed, as in the screenshot.
 
 ## Install
 
@@ -45,7 +47,7 @@ Hyprland's default placement.
 
 ## Known issues
 
-- Tested on one machine (Lenovo, Intel + NVIDIA hybrid). Other setups may need
+- Tested on one machine (Lenovo, Intel + NVIDIA hybrid, TV over HDMI). Other setups may need
   tweaks, and issues or PRs are welcome.
 - **HDMI on hybrid-GPU laptops:** on many of these the HDMI port hangs off the
   NVIDIA GPU. If the GPU is in an integrated or VFIO mode (for example via
