@@ -804,14 +804,12 @@ Panel {
 
           // ---------- Layout (Win+P style) ----------
           PanelSeparator {
-            visible: root.displays.length > 1
             foreground: root.bar.foreground
           }
 
           Column {
             width: parent.width
             spacing: Style.space(10)
-            visible: root.displays.length > 1
 
             PanelSectionHeader {
               text: "LAYOUT"
@@ -819,8 +817,19 @@ Panel {
               fontFamily: root.bar.fontFamily
             }
 
+            Text {
+              visible: root.displays.length < 2
+              text: "Connect a TV or monitor to use these"
+              color: Qt.darker(root.bar.foreground, 1.4)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+              width: parent.width
+              wrapMode: Text.Wrap
+            }
+
             Flow {
               width: parent.width
+              opacity: root.displays.length > 1 ? 1.0 : 0.4
               spacing: Style.space(8)
 
               Repeater {
@@ -841,7 +850,7 @@ Panel {
                   horizontalPadding: Style.spacing.sm
                   verticalPadding: Style.spacing.controlPaddingY
                   bordered: true
-                  onClicked: root.setLayout(modelData.mode)
+                  onClicked: if (root.displays.length > 1) root.setLayout(modelData.mode)
                 }
               }
             }
