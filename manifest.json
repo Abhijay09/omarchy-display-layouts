@@ -1,16 +1,18 @@
 {
   "schemaVersion": 1,
-  "id": "omarchy.monitor",
-  "name": "Display",
-  "version": "1.0.0",
-  "author": "Omarchy",
-  "description": "Brightness slider and laptop display controls",
+  "id": "io.github.abhijay09.display-layouts",
+  "name": "Display Layouts",
+  "version": "0.1.0",
+  "author": "Abhijay09",
+  "license": "MIT",
+  "description": "Win+P style display layouts (extend, mirror, TV only, laptop only) in the Omarchy Display widget.",
   "kinds": ["bar-widget"],
   "entryPoints": { "barWidget": "Panel.qml" },
   "barWidget": {
-    "displayName": "Display",
-    "description": "Brightness slider and laptop display controls",
+    "displayName": "Display Layouts",
+    "description": "Brightness, scale and text size, plus extend / mirror / TV only / laptop only for external screens.",
     "category": "System",
-    "allowMultiple": false
+    "allowMultiple": false,
+    "defaultSection": "right"
   }
 }
