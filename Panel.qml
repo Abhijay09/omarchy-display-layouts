@@ -311,6 +311,11 @@ Panel {
     if (!actionProc.running) actionProc.running = true
   }
 
+  function setLayout(mode) {
+    actionProc.command = [Qt.resolvedUrl("layout.sh").toString().replace("file://", ""), mode]
+    if (!actionProc.running) actionProc.running = true
+  }
+
   function setScale(scale) {
     actionProc.command = ["bash", "-c", "omarchy-hyprland-monitor-scaling " + scale]
     if (!actionProc.running) actionProc.running = true
