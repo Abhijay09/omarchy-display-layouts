@@ -34,6 +34,23 @@ enable both. If `--enable` doesn't swap it in on your bar, move it by hand:
 omarchy bar move io.github.abhijay09.display-layouts --section right
 ```
 
+## Requirements
+
+- Omarchy with the Lua Hyprland config (`hyprctl eval` support)
+- `hyprctl` and `jq` (both ship with Omarchy)
+- Omarchy's own `omarchy-hyprland-monitor-*` and `omarchy-notification-send` commands
+
+Nothing else to install, and the widget doesn't touch your Hyprland config files.
+
+## Remove
+
+```
+omarchy plugin remove io.github.abhijay09.display-layouts
+omarchy plugin enable omarchy.monitor right
+```
+
+The second line puts the stock Display widget back on the right side of the bar.
+
 ## How it works
 
 `layout.sh` finds the laptop panel and the first external output, then drives
