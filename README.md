@@ -45,11 +45,16 @@ doesn't always pick up a changed plugin on its own.
 
 ### Super + P
 
-A plugin can't add keybindings, so add this line to `~/.config/hypr/bindings.lua`:
+A plugin can't add keybindings, so add these lines to `~/.config/hypr/bindings.lua`:
 
 ```lua
+hl.unbind("SUPER + P") -- was: Pseudo window
 o.bind("SUPER + P", "Project display", "omarchy-shell omarchy.monitor project")
 ```
+
+Omarchy binds `SUPER + P` to "Pseudo window" by default, so the first line frees it.
+Without it both would run on every press. If you use pseudo-tiling, pick another key
+for one of them.
 
 Press it once to open the picker with your current layout selected. Press it again
 to step to the next layout, or use the arrow keys, Tab, `1`-`4`, `S` to change the
@@ -77,7 +82,7 @@ omarchy plugin enable omarchy.monitor right
 ```
 
 The last line puts the stock Display widget back. Also remove the `SUPER + P` line
-from `bindings.lua` if you added it.
+from `bindings.lua` if you added them, and the unbind line too if you want pseudo window back.
 
 ## How it works
 
