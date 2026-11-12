@@ -75,6 +75,7 @@ Panel {
 
   readonly property var visibleSections: {
     var list = []
+    if (tab !== "display") return list
     if (brightnessAvailable) list.push("brightness")
     list.push("textsize")
     list.push("scale")
@@ -224,14 +225,21 @@ Panel {
     function brightness(percent: string): string { return root.brightnessIpc(percent) }
     function state(): string { return root.stateIpc() }
     function open() { root.open() }
-    function close() { root.close() }
+    function close() { projectOv.close(); root.close() }
     function toggle() { root.toggle() }
+    function project(): void { if (projectOv.opened) projectOv.press(); else root.openProject() }
+    function commit(): void { projectOv.commit() }
+    function tab(name: string): void { root.tab = name === "display" ? "display" : "screens" }
+    function identify(): void { identifyOv.flash() }
+    function layout(mode: string): void { root.setLayout(mode, root.sideNow) }
     function show() { root.open() }
     function hide() { root.close() }
   }
 
   function refresh() {
     if (!stateProc.running) stateProc.running = true
+    if (!monProc.running) monProc.running = true
+    if (!rememberProc.running) rememberProc.running = true
   }
 
   function setBrightness(value) {
@@ -311,11 +319,6 @@ Panel {
     if (!actionProc.running) actionProc.running = true
   }
 
-  function setLayout(mode) {
-    actionProc.command = [Qt.resolvedUrl("layout.sh").toString().replace("file://", ""), mode]
-    if (!actionProc.running) actionProc.running = true
-  }
-
   function setScale(scale) {
     actionProc.command = ["bash", "-c", "omarchy-hyprland-monitor-scaling " + scale]
     if (!actionProc.running) actionProc.running = true
@@ -361,6 +364,50 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  // ---- Display Layouts: arrangement, layouts, overlay ----
+  property var monitors: []
+  property string selectedOutput: ""
+  property bool remembered: false
+  property var ctlQueue: []
+  property bool pendingProject: false
+  property string tab: "screens"
+
+  readonly property string layoutNow: Model.layoutMode(monitors)
+  readonly property bool canSwitch: monitors.length > 1
+  readonly property var anchorDisplay: {
+    var on = monitors.filter(function(d) { return d.enabled })
+    return on.filter(function(d) { return d.internal })[0] || on[0] || null
+  }
+  readonly property string sideNow: {
+    var other = monitors.filter(function(d) { return d.enabled && !d.internal && d.mirrorOf === "" })[0]
+    return other && anchorDisplay ? Model.sideOf(other, anchorDisplay) : "right"
+  }
+  readonly property var selectedDisplay: {
+    var pick = monitors.filter(function(d) { return d.name === selectedOutput })[0]
+    return pick || monitors.filter(function(d) { return d.focused })[0] || monitors[0] || null
+  }
+  readonly property string ctlPath: Qt.resolvedUrl("displayctl").toString().replace("file://", "")
+
+  // displayctl calls run one at a time, in order, so quick clicks never drop.
+  function ctl(args) {
+    var q = ctlQueue.slice()
+    q.push(args)
+    ctlQueue = q
+    if (!ctlProc.running) runNextCtl()
+  }
+  function runNextCtl() {
+    if (ctlQueue.length === 0) return
+    var q = ctlQueue.slice()
+    ctlProc.command = [root.ctlPath].concat(q.shift())
+    ctlQueue = q
+    ctlProc.running = true
+  }
+  function setLayout(mode, side) {
+    ctl(mode === "extend" ? ["layout", "extend", side || root.sideNow] : ["layout", mode])
+  }
+  function setRemember(on) { ctl(["remember", on ? "on" : "off"]) }
+  function openProject() { pendingProject = true; refresh() }
+
   Component.onCompleted: refresh()
 
   // KeyboardPanel primes focus at open-time, so SUPER-bound IPC summons land
@@ -384,6 +431,7 @@ Panel {
   onDisplaysChanged: clampCursor()
   onScaleValuesChanged: clampCursor()
   onVisibleSectionsChanged: clampCursor()
+  onTabChanged: if (scrollArea && scrollArea.contentItem) scrollArea.contentItem.contentY = 0
 
   // Only poll while the panel is open; the bar glyph tracks monitor count via
   // Quickshell.screens, and open-time refresh + Component.onCompleted cover the
@@ -392,6 +440,49 @@ Panel {
     interval: 5000
     running: root.opened
     repeat: true
+    onTriggered: root.refresh()
+  }
+
+  Process {
+    id: monProc
+    command: ["hyprctl", "monitors", "all", "-j"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.monitors = Model.parseMonitors(text)
+        if (root.selectedOutput !== "" && !root.monitors.some(function(d) { return d.name === root.selectedOutput }))
+          root.selectedOutput = ""
+        if (root.pendingProject) {
+          root.pendingProject = false
+          projectOv.open()
+        }
+      }
+    }
+  }
+
+  Process {
+    id: rememberProc
+    command: [root.ctlPath, "remember", "status"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.remembered = String(text || "").trim() === "on"
+    }
+  }
+
+  Process {
+    id: ctlProc
+    stdout: StdioCollector { waitForEnd: true }
+    onExited: {
+      root.refresh()
+      refreshSoon.restart()
+      root.runNextCtl()
+    }
+  }
+
+  // Hyprland needs a moment to settle after a layout change.
+  Timer {
+    id: refreshSoon
+    interval: 700
     onTriggered: root.refresh()
   }
 
@@ -500,8 +591,8 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(380))
-    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
+    contentWidth: panel.fittedContentWidth(Style.space(440))
+    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(780))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -590,299 +681,426 @@ Panel {
             }
           }
 
-          // ---------- Brightness ----------
-          PanelSeparator {
-            visible: root.brightnessAvailable
-            foreground: root.bar.foreground
-          }
-
-          Column {
-            visible: root.brightnessAvailable
+          // ---------- Tabs ----------
+          Row {
             width: parent.width
             spacing: Style.space(6)
-
-            Item {
-              width: parent.width
-              implicitHeight: Math.max(brightnessHeader.implicitHeight, brightnessPercent.implicitHeight)
-
-              PanelSectionHeader {
-                id: brightnessHeader
-                text: "BRIGHTNESS"
-                foreground: root.bar.foreground
-                fontFamily: root.bar.fontFamily
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              Text {
-                id: brightnessPercent
-                textFormat: Text.PlainText
-                text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
-                color: Qt.darker(root.bar.foreground, 1.4)
-                font.family: root.bar.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                anchors.right: parent.right
-                anchors.rightMargin: Style.space(6)
-                anchors.verticalCenter: parent.verticalCenter
-              }
-            }
-
-            CursorSurface {
-              id: brightnessRow
-              width: parent.width
-              height: brightnessSlider.implicitHeight + Style.spacing.controlGap
-              hasCursor: root.cursorActive && root.focusSection === "brightness" && root.selectedIndex === -1
-              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
-              foreground: root.bar.foreground
-              outline: true
-
-              PanelSlider {
-                id: brightnessSlider
-                bar: root.bar
-                anchors.fill: parent
-                anchors.leftMargin: Style.space(6)
-                anchors.rightMargin: Style.space(6)
-                minimum: 1
-                maximum: 100
-                step: 1
-                value: root.brightnessPercent
-                integer: true
-                onMoved: function(v) { root.previewBrightness(v) }
-                onReleased: function(v) {
-                  brightnessDebounce.stop()
-                  root.setBrightness(v)
-                }
-              }
-
-              HoverHandler {
-                onHoveredChanged: if (hovered && !root.reflowingText) {
-                  root.cursorActive = true
-                  root.focusSection = "brightness"
-                  root.selectedIndex = -1
-                }
-              }
-            }
-          }
-
-          // ---------- Text size ----------
-          PanelSeparator {
-            foreground: root.bar.foreground
-          }
-
-          Column {
-            width: parent.width
-            spacing: Style.space(6)
-
-            Item {
-              width: parent.width
-              implicitHeight: Math.max(textSizeHeader.implicitHeight, textSizePx.implicitHeight)
-
-              PanelSectionHeader {
-                id: textSizeHeader
-                text: "TEXT SIZE"
-                foreground: root.bar.foreground
-                fontFamily: root.bar.fontFamily
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              Text {
-                id: textSizePx
-                textFormat: Text.PlainText
-                text: (textSizeSlider.dragging
-                       ? root.textSizeStops[Math.round(textSizeSlider.liveValue)]
-                       : root.displayedTextPx()) + "px"
-                color: Qt.darker(root.bar.foreground, 1.4)
-                font.family: root.bar.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                anchors.right: parent.right
-                anchors.rightMargin: Style.space(6)
-                anchors.verticalCenter: parent.verticalCenter
-              }
-            }
-
-            CursorSurface {
-              id: textSizeRow
-              width: parent.width
-              height: textSizeSlider.implicitHeight + Style.spacing.controlGap
-              hasCursor: root.cursorActive && root.focusSection === "textsize" && root.selectedIndex === -1
-              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(textSizeRow)
-              foreground: root.bar.foreground
-              outline: true
-
-              PanelSlider {
-                id: textSizeSlider
-                bar: root.bar
-                anchors.fill: parent
-                anchors.leftMargin: Style.space(6)
-                anchors.rightMargin: Style.space(6)
-                minimum: 0
-                maximum: root.textSizeStops.length - 1
-                step: 1
-                integer: true
-                tickCount: root.textSizeStops.length
-                value: root.currentTextIndex()
-                onReleased: function(v) { root.setTextSize(root.textSizeStops[Math.round(v)]) }
-              }
-
-              HoverHandler {
-                onHoveredChanged: if (hovered && !root.reflowingText) {
-                  root.cursorActive = true
-                  root.focusSection = "textsize"
-                  root.selectedIndex = -1
-                }
-              }
-            }
-          }
-
-          // ---------- Scale ----------
-          PanelSeparator {
-            foreground: root.bar.foreground
-          }
-
-          Column {
-            width: parent.width
-            spacing: Style.space(10)
-
-            Item {
-              width: parent.width
-              implicitHeight: Math.max(scaleHeader.implicitHeight, scaleMonitor.implicitHeight)
-
-              PanelSectionHeader {
-                id: scaleHeader
-                text: "SCALE"
-                foreground: root.bar.foreground
-                fontFamily: root.bar.fontFamily
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              // Name the monitor SCALE targets, since it only applies to the
-              // focused one.
-              Text {
-                id: scaleMonitor
-                textFormat: Text.PlainText
-                text: root.focusedMonitor
-                // Only worth naming when more than one display is in play.
-                visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
-                color: Qt.darker(root.bar.foreground, 1.4)
-                font.family: root.bar.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                anchors.right: parent.right
-                anchors.rightMargin: Style.space(6)
-                anchors.verticalCenter: parent.verticalCenter
-              }
-            }
-
-            Grid {
-              id: scaleRow
-              width: parent.width
-              columns: root.scaleValues.length
-              spacing: Style.spacing.xs
-
-              readonly property real cellWidth: root.scaleValues.length > 0
-                ? (width - spacing * (columns - 1)) / columns
-                : 0
-
-              Repeater {
-                model: root.scaleValues
-
-                ScalePill {
-                  required property string modelData
-                  required property int index
-
-                  scaleValue: modelData
-                  scaleIndex: index
-                  width: scaleRow.cellWidth
-                }
-              }
-            }
-          }
-
-          // ---------- Layout (Win+P style) ----------
-          PanelSeparator {
-            foreground: root.bar.foreground
-          }
-
-          Column {
-            width: parent.width
-            spacing: Style.space(10)
-
-            PanelSectionHeader {
-              text: "LAYOUT"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-            }
-
-            Text {
-              visible: root.displays.length < 2
-              text: "Connect a TV or monitor to use these"
-              color: Qt.darker(root.bar.foreground, 1.4)
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.caption
-              width: parent.width
-              wrapMode: Text.Wrap
-            }
-
-            Flow {
-              width: parent.width
-              opacity: root.displays.length > 1 ? 1.0 : 0.4
-              spacing: Style.space(8)
-
-              Repeater {
-                model: [
-                  { label: "󰍺 Extend →", mode: "extend-right" },
-                  { label: "← Extend", mode: "extend-left" },
-                  { label: "󰍹 Mirror", mode: "mirror" },
-                  { label: "󰍹 TV only", mode: "tv" },
-                  { label: "󰌢 Laptop only", mode: "laptop" }
-                ]
-
-                Button {
-                  required property var modelData
-                  text: modelData.label
-                  fontSize: Style.font.caption
-                  foreground: root.bar.foreground
-                  fontFamily: root.bar.fontFamily
-                  horizontalPadding: Style.spacing.sm
-                  verticalPadding: Style.spacing.controlPaddingY
-                  bordered: true
-                  onClicked: if (root.displays.length > 1) root.setLayout(modelData.mode)
-                }
-              }
-            }
-          }
-
-          // ---------- Monitors ----------
-          PanelSeparator {
-            visible: root.displays.length > 1
-            foreground: root.bar.foreground
-          }
-
-          Column {
-            width: parent.width
-            spacing: Style.space(10)
-            visible: root.displays.length > 1
-
-            PanelSectionHeader {
-              text: "DISPLAYS"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-            }
 
             Repeater {
-              model: root.displays
+              model: [ { id: "screens", label: "󰍺  Screens" }, { id: "display", label: "󰃟  Display" } ]
 
-              MonitorRow {
+              Rectangle {
+                id: tabChip
                 required property var modelData
-                required property int index
+                readonly property bool on: root.tab === modelData.id
+                width: (parent.width - parent.spacing) / 2
+                height: Style.space(30)
+                color: on ? Style.selectedFillFor(root.bar.foreground, Commons.Color.accent)
+                     : tabMouse.containsMouse ? Style.hoverFillFor(root.bar.foreground, Commons.Color.accent) : "transparent"
+                border.width: Math.max(1, Style.space(1))
+                border.color: on ? Commons.Color.accent : Util.alpha(root.bar.foreground, 0.3)
+                radius: Style.cornerRadius > 0 ? Style.space(3) : 0
+                Text {
+                  anchors.centerIn: parent
+                  textFormat: Text.PlainText
+                  text: tabChip.modelData.label
+                  color: tabChip.on ? Commons.Color.accent : root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.body
+                  font.bold: tabChip.on
+                }
+                MouseArea {
+                  id: tabMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.tab = tabChip.modelData.id
+                }
+              }
+            }
+          }
 
-                width: panelColumn.width
-                display: modelData
-                rowIndex: index
+          Column {
+            width: parent.width
+            spacing: Style.space(14)
+            visible: root.tab === "screens"
+
+            // ---------- Arrangement ----------
+            Column {
+              width: parent.width
+              spacing: Style.space(8)
+
+              Item {
+                width: parent.width
+                height: arrangeHeader.implicitHeight
+                PanelSectionHeader {
+                  id: arrangeHeader
+                  text: "ARRANGEMENT"
+                  foreground: root.bar.foreground
+                  fontFamily: root.bar.fontFamily
+                  anchors.left: parent.left
+                }
+                Text {
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: root.canSwitch ? "drag a screen to move it" : "plug in a TV or monitor"
+                  color: Qt.darker(root.bar.foreground, 1.5)
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+              }
+
+              DisplayMap {
+                width: parent.width
+                displays: root.monitors
+                selected: root.selectedDisplay ? root.selectedDisplay.name : ""
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                onPicked: function(name) { root.selectedOutput = name }
+                onSideDropped: function(name, side) { root.ctl(["side", name, side]) }
+              }
+
+            }
+
+            // ---------- Layout ----------
+            PanelSeparator { foreground: root.bar.foreground }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(10)
+
+              Item {
+                width: parent.width
+                height: layoutHeader.implicitHeight
+                PanelSectionHeader {
+                  id: layoutHeader
+                  text: "LAYOUT"
+                  foreground: root.bar.foreground
+                  fontFamily: root.bar.fontFamily
+                  anchors.left: parent.left
+                }
+                Text {
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "Super + P"
+                  color: Qt.darker(root.bar.foreground, 1.5)
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+              }
+
+              LayoutCards {
+                width: parent.width
+                current: root.layoutNow === "single" ? "internal" : root.layoutNow
+                side: root.sideNow
+                canSwitch: root.canSwitch
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                onLayoutChosen: function(mode) { root.setLayout(mode, root.sideNow) }
+                onSideChosen: function(side) { root.setLayout("extend", side) }
+              }
+
+              Item {
+                width: parent.width
+                height: Math.max(rememberText.implicitHeight, rememberSwitch.implicitHeight)
+
+                Column {
+                  id: rememberText
+                  anchors.left: parent.left
+                  anchors.right: rememberSwitch.left
+                  anchors.rightMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(1)
+                  Text {
+                    text: "Remember this setup"
+                    color: root.bar.foreground
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: Style.font.body
+                  }
+                  Text {
+                    width: parent.width
+                    text: "Keep side, resolution and scale after a reload or reboot."
+                    color: Qt.darker(root.bar.foreground, 1.5)
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.Wrap
+                  }
+                }
+                ToggleSwitch {
+                  id: rememberSwitch
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  checked: root.remembered
+                  foreground: root.bar.foreground
+                  onToggled: { root.remembered = !root.remembered; root.setRemember(root.remembered) }
+                }
+              }
+            }
+
+            // ---------- Selected screen ----------
+            PanelSeparator {
+              visible: root.selectedDisplay !== null
+              foreground: root.bar.foreground
+            }
+
+            DisplayDetail {
+              width: parent.width
+              display: root.selectedDisplay
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              onModeChosen: function(output, mode) { root.ctl(["mode", output, mode]) }
+              onRotateChosen: function(output, t) { root.ctl(["rotate", output, String(t)]) }
+              onSendWindow: function(output) { root.ctl(["send", output]) }
+              onSendWorkspace: function(output) { root.ctl(["workspace", output]) }
+              onIdentify: identifyOv.flash()
+            }
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(14)
+            visible: root.tab === "display"
+
+            // ---------- Brightness ----------
+            PanelSeparator {
+              visible: root.brightnessAvailable
+              foreground: root.bar.foreground
+            }
+
+            Column {
+              visible: root.brightnessAvailable
+              width: parent.width
+              spacing: Style.space(6)
+
+              Item {
+                width: parent.width
+                implicitHeight: Math.max(brightnessHeader.implicitHeight, brightnessPercent.implicitHeight)
+
+                PanelSectionHeader {
+                  id: brightnessHeader
+                  text: "BRIGHTNESS"
+                  foreground: root.bar.foreground
+                  fontFamily: root.bar.fontFamily
+                  anchors.left: parent.left
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                  id: brightnessPercent
+                  textFormat: Text.PlainText
+                  text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
+                  color: Qt.darker(root.bar.foreground, 1.4)
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(6)
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+
+              CursorSurface {
+                id: brightnessRow
+                width: parent.width
+                height: brightnessSlider.implicitHeight + Style.spacing.controlGap
+                hasCursor: root.cursorActive && root.focusSection === "brightness" && root.selectedIndex === -1
+                onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
+                foreground: root.bar.foreground
+                outline: true
+
+                PanelSlider {
+                  id: brightnessSlider
+                  bar: root.bar
+                  anchors.fill: parent
+                  anchors.leftMargin: Style.space(6)
+                  anchors.rightMargin: Style.space(6)
+                  minimum: 1
+                  maximum: 100
+                  step: 1
+                  value: root.brightnessPercent
+                  integer: true
+                  onMoved: function(v) { root.previewBrightness(v) }
+                  onReleased: function(v) {
+                    brightnessDebounce.stop()
+                    root.setBrightness(v)
+                  }
+                }
+
+                HoverHandler {
+                  onHoveredChanged: if (hovered && !root.reflowingText) {
+                    root.cursorActive = true
+                    root.focusSection = "brightness"
+                    root.selectedIndex = -1
+                  }
+                }
+              }
+            }
+
+            // ---------- Text size ----------
+            PanelSeparator {
+              foreground: root.bar.foreground
+            }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(6)
+
+              Item {
+                width: parent.width
+                implicitHeight: Math.max(textSizeHeader.implicitHeight, textSizePx.implicitHeight)
+
+                PanelSectionHeader {
+                  id: textSizeHeader
+                  text: "TEXT SIZE"
+                  foreground: root.bar.foreground
+                  fontFamily: root.bar.fontFamily
+                  anchors.left: parent.left
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                  id: textSizePx
+                  textFormat: Text.PlainText
+                  text: (textSizeSlider.dragging
+                         ? root.textSizeStops[Math.round(textSizeSlider.liveValue)]
+                         : root.displayedTextPx()) + "px"
+                  color: Qt.darker(root.bar.foreground, 1.4)
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(6)
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+
+              CursorSurface {
+                id: textSizeRow
+                width: parent.width
+                height: textSizeSlider.implicitHeight + Style.spacing.controlGap
+                hasCursor: root.cursorActive && root.focusSection === "textsize" && root.selectedIndex === -1
+                onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(textSizeRow)
+                foreground: root.bar.foreground
+                outline: true
+
+                PanelSlider {
+                  id: textSizeSlider
+                  bar: root.bar
+                  anchors.fill: parent
+                  anchors.leftMargin: Style.space(6)
+                  anchors.rightMargin: Style.space(6)
+                  minimum: 0
+                  maximum: root.textSizeStops.length - 1
+                  step: 1
+                  integer: true
+                  tickCount: root.textSizeStops.length
+                  value: root.currentTextIndex()
+                  onReleased: function(v) { root.setTextSize(root.textSizeStops[Math.round(v)]) }
+                }
+
+                HoverHandler {
+                  onHoveredChanged: if (hovered && !root.reflowingText) {
+                    root.cursorActive = true
+                    root.focusSection = "textsize"
+                    root.selectedIndex = -1
+                  }
+                }
+              }
+            }
+
+            // ---------- Scale ----------
+            PanelSeparator {
+              foreground: root.bar.foreground
+            }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(10)
+
+              Item {
+                width: parent.width
+                implicitHeight: Math.max(scaleHeader.implicitHeight, scaleMonitor.implicitHeight)
+
+                PanelSectionHeader {
+                  id: scaleHeader
+                  text: "SCALE"
+                  foreground: root.bar.foreground
+                  fontFamily: root.bar.fontFamily
+                  anchors.left: parent.left
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                // Name the monitor SCALE targets, since it only applies to the
+                // focused one.
+                Text {
+                  id: scaleMonitor
+                  textFormat: Text.PlainText
+                  text: root.focusedMonitor
+                  // Only worth naming when more than one display is in play.
+                  visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
+                  color: Qt.darker(root.bar.foreground, 1.4)
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(6)
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+
+              Grid {
+                id: scaleRow
+                width: parent.width
+                columns: root.scaleValues.length
+                spacing: Style.spacing.xs
+
+                readonly property real cellWidth: root.scaleValues.length > 0
+                  ? (width - spacing * (columns - 1)) / columns
+                  : 0
+
+                Repeater {
+                  model: root.scaleValues
+
+                  ScalePill {
+                    required property string modelData
+                    required property int index
+
+                    scaleValue: modelData
+                    scaleIndex: index
+                    width: scaleRow.cellWidth
+                  }
+                }
+              }
+            }
+
+            // ---------- Monitors ----------
+            PanelSeparator {
+              visible: root.displays.length > 1
+              foreground: root.bar.foreground
+            }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(10)
+              visible: root.displays.length > 1
+
+              PanelSectionHeader {
+                text: "SWITCH SCREENS ON OR OFF"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+              }
+
+              Repeater {
+                model: root.displays
+
+                MonitorRow {
+                  required property var modelData
+                  required property int index
+
+                  width: panelColumn.width
+                  display: modelData
+                  rowIndex: index
+                }
               }
             }
           }
@@ -894,6 +1112,24 @@ Panel {
         }
       }
     }
+  }
+
+  ProjectOverlay {
+    id: projectOv
+    current: root.layoutNow === "single" ? "internal" : root.layoutNow
+    side: root.sideNow
+    canSwitch: root.canSwitch
+    targetScreen: Quickshell.screens.filter(function(sc) { return sc.name === root.focusedMonitor })[0] || Quickshell.screens[0]
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    onChosen: function(mode, side) { root.setLayout(mode, side) }
+  }
+
+  IdentifyOverlay {
+    id: identifyOv
+    displays: root.monitors
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
   }
 
   component ScalePill: Button {
