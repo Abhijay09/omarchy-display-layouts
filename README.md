@@ -20,7 +20,8 @@ scale, and switching screens on or off now live on a **Display** tab. The new
 - **Remember this setup.** Keeps placement, resolution and scale across a reload
   or reboot.
 
-There is also a full-screen picker you can open with **Super + P**.
+There is also a full-screen picker you can open with **Super + P**. It frosts
+the screen behind it and closes by itself after 10 seconds if you choose nothing.
 
 | | |
 | --- | --- |
@@ -58,7 +59,9 @@ for one of them.
 
 Press it once to open the picker with your current layout selected. Press it again
 to step to the next layout, or use the arrow keys, Tab, `1`-`4`, `S` to change the
-side and Esc to cancel. Enter or a click applies the layout. Letting go of Super
+side and Esc to cancel. Enter or a click applies the layout. If you do nothing for 10 seconds it closes on
+its own (a thin bar under the hint shows the time left, and any key press or mouse
+move starts it over). Letting go of Super
 applies it too, as long as you stepped with the key and your compositor forwards the
 key release to the picker. Enter always works.
 
