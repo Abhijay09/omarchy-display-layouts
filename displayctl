@@ -1,0 +1,176 @@
+#!/bin/bash
+# displayctl - backend for the Display Layouts widget.
+#
+#   displayctl layout extend [left|right|up|down]   second screen as extra desktop
+#   displayctl layout mirror                        same picture on both
+#   displayctl layout internal                      laptop screen only
+#   displayctl layout external                      external screen only
+#   displayctl side <output> <left|right|up|down>   move a screen to a side of the laptop
+#   displayctl mode <output> <WxH@Hz>               resolution / refresh rate
+#   displayctl scale <output> <factor>              scale for one screen
+#   displayctl rotate <output> <0|1|2|3>            0, 90, 180, 270 degrees
+#   displayctl send <output>                        move the active window to a screen
+#   displayctl workspace <output>                   move the current workspace to a screen
+#   displayctl remember <on|off|status>             keep placement/mode/scale after a reload
+#
+# DISPLAYCTL_DRY=1 prints the Hyprland Lua it would run instead of running it.
+
+set -u
+
+INTERNAL_RE='^(eDP|LVDS|DSI)-'
+NAME_RE='^[A-Za-z0-9._-]+$'
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/hypr"
+SAVE_FILE="$STATE_DIR/display-layouts.lua"
+
+notify() { omarchy-notification-send -g 󰍹 "$1" 2>/dev/null || true; }
+die()    { notify "$1"; echo "displayctl: $1" >&2; exit 1; }
+
+monitors() { hyprctl monitors all -j; }
+
+internal_name() {
+  monitors | jq -r --arg re "$INTERNAL_RE" '[.[] | select(.name | test($re))][0].name // empty'
+}
+external_name() {
+  monitors | jq -r --arg re "$INTERNAL_RE" '[.[] | select(.name | test($re) | not)][0].name // empty'
+}
+
+# A name ends up inside generated Lua, so only plain connector names may pass.
+check_name() { [[ ${1:-} =~ $NAME_RE ]] || die "Refusing unsafe monitor name"; }
+
+lua() {
+  if [[ -n ${DISPLAYCTL_DRY:-} ]]; then echo "LUA: $1"; else hyprctl eval "$1" >/dev/null; fi
+}
+
+# Print an hl.monitor{} line for <output>, carrying over its current settings
+# so changing one thing never resets the others. $2 is a JSON object of
+# overrides (mode, position, scale, transform, disabled).
+monitor_lua() {
+  monitors | jq -r --arg n "$1" --argjson o "${2:-{\}}" '
+    .[] | select(.name == $n) as $m
+    | ( if $m.disabled then {mode: "preferred", position: "auto", scale: "auto", transform: 0}
+        else {mode: "\($m.width)x\($m.height)@\($m.refreshRate)",
+              position: "\($m.x)x\($m.y)", scale: $m.scale, transform: $m.transform} end
+        + {disabled: false}) + $o
+    | "hl.monitor({ output = \"\($n)\", mode = \"\(.mode)\", position = \"\(.position)\", scale = "
+      + (if (.scale | type) == "number" then (.scale | tostring) else "\"\(.scale)\"" end)
+      + ", transform = \(.transform)"
+      + (if .disabled then ", disabled = true" else "" end) + " })"'
+}
+
+apply() { local l; l=$(monitor_lua "$1" "${2:-{\}}"); [[ -n $l ]] && lua "$l"; }
+
+# Like apply, but an external screen is re-placed by side so a new size,
+# scale or rotation can't leave it overlapping the laptop screen.
+apply_keep() {
+  local name=$1 over=$2
+  if [[ ! $name =~ $INTERNAL_RE ]]; then
+    over=$(jq -c --arg p "auto-$(current_side)" '. + {position: $p}' <<<"$over")
+  fi
+  apply "$name" "$over"
+}
+
+side_position() {
+  case "$1" in
+    left|right|up|down) echo "auto-$1" ;;
+    *) die "Unknown side: $1" ;;
+  esac
+}
+
+# Which side of the laptop screen an external one sits on, from geometry.
+current_side() {
+  monitors | jq -r --arg re "$INTERNAL_RE" '
+    ([.[] | select(.name | test($re)) | select(.disabled | not)][0]) as $i
+    | ([.[] | select(.name | test($re) | not) | select(.disabled | not)][0]) as $e
+    | if ($i == null or $e == null) then "right" else
+        (($e.x + $e.width / $e.scale / 2) - ($i.x + $i.width / $i.scale / 2)) as $dx
+        | (($e.y + $e.height / $e.scale / 2) - ($i.y + $i.height / $i.scale / 2)) as $dy
+        | if ($dx | fabs) >= ($dy | fabs) then (if $dx >= 0 then "right" else "left" end)
+          else (if $dy >= 0 then "down" else "up" end) end
+      end'
+}
+
+save_layout() {
+  [[ -f $SAVE_FILE ]] || return 0
+  local out
+  out=$(monitors | jq -r --arg re "$INTERNAL_RE" --arg side "$(current_side)" '
+    .[] | select((.name | test($re) | not) and (.disabled | not) and .mirrorOf == "none")
+    | select(.name | test("^[A-Za-z0-9._-]+$"))
+    | "hl.monitor({ output = \"\(.name)\", mode = \"\(.width)x\(.height)@\(.refreshRate)\", position = \"auto-\($side)\", scale = \(.scale), transform = \(.transform) })"')
+  mkdir -p "$STATE_DIR"
+  { echo "-- Written by Display Layouts. Remove with: displayctl remember off"; echo "$out"; } >"$SAVE_FILE"
+}
+
+layout() {
+  local mode=${1:-} ext int side
+  int=$(internal_name); ext=$(external_name)
+  [[ -n $ext ]] || die "No external display connected"
+  [[ -n $int ]] || die "No laptop display found"
+  check_name "$ext"; check_name "$int"
+
+  case "$mode" in
+    extend)
+      side=${2:-right}
+      omarchy-hyprland-monitor-internal-mirror off
+      omarchy-hyprland-monitor-internal on
+      apply "$ext" "$(jq -n --arg p "$(side_position "$side")" '{position: $p}')"
+      notify "Extended: $ext on the $side"
+      ;;
+    mirror)
+      omarchy-hyprland-monitor-internal-mirror on
+      ;;
+    internal)
+      omarchy-hyprland-monitor-internal-mirror off
+      omarchy-hyprland-monitor-internal on
+      lua "hl.monitor({ output = \"$ext\", disabled = true })"
+      notify "Laptop display only"
+      ;;
+    external)
+      omarchy-hyprland-monitor-internal-mirror off
+      apply "$ext" '{"position":"auto"}'
+      omarchy-hyprland-monitor-internal off
+      ;;
+    *) die "Unknown layout: $mode" ;;
+  esac
+  save_layout
+}
+
+case "${1:-}" in
+  layout) shift; layout "$@" ;;
+  side)
+    check_name "${2:-}"
+    apply "$2" "$(jq -n --arg p "$(side_position "${3:-}")" '{position: $p}')"
+    save_layout ;;
+  mode)
+    check_name "${2:-}"
+    [[ ${3:-} =~ ^[0-9]+x[0-9]+@[0-9.]+$ ]] || die "Bad mode: ${3:-}"
+    apply_keep "$2" "$(jq -nc --arg m "$3" '{mode: $m}')"
+    save_layout ;;
+  scale)
+    check_name "${2:-}"
+    [[ ${3:-} =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "Bad scale: ${3:-}"
+    apply_keep "$2" "$(jq -nc --argjson s "$3" '{scale: $s}')"
+    save_layout ;;
+  rotate)
+    check_name "${2:-}"
+    [[ ${3:-} =~ ^[0-3]$ ]] || die "Bad rotation: ${3:-}"
+    apply_keep "$2" "$(jq -nc --argjson t "$3" '{transform: $t}')"
+    save_layout ;;
+  send)
+    check_name "${2:-}"
+    addr=$(hyprctl activewindow -j | jq -r '.address // empty')
+    [[ -n $addr && $addr =~ ^0x[0-9a-f]+$ ]] || die "No active window to move"
+    if [[ -n ${DISPLAYCTL_DRY:-} ]]; then echo "DISPATCH: window.move monitor=$2 window=address:$addr"
+    else hyprctl dispatch "hl.dsp.window.move({ monitor = \"$2\", window = \"address:$addr\" })" >/dev/null; fi ;;
+  workspace)
+    check_name "${2:-}"
+    if [[ -n ${DISPLAYCTL_DRY:-} ]]; then echo "DISPATCH: workspace.move monitor=$2"
+    else hyprctl dispatch "hl.dsp.workspace.move({ monitor = \"$2\" })" >/dev/null; fi ;;
+  remember)
+    case "${2:-status}" in
+      on)  mkdir -p "$STATE_DIR"; : >"$SAVE_FILE"; save_layout; notify "Display layout will be remembered" ;;
+      off) rm -f "$SAVE_FILE"; notify "Display layout no longer remembered" ;;
+      status) [[ -f $SAVE_FILE ]] && echo on || echo off ;;
+      *) die "usage: displayctl remember on|off|status" ;;
+    esac ;;
+  *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
