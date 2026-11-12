@@ -2,15 +2,19 @@
   "schemaVersion": 1,
   "id": "io.github.abhijay09.display-layouts",
   "name": "Display Layouts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Abhijay09",
   "license": "MIT",
-  "description": "Win+P style display layouts (extend, mirror, TV only, laptop only) in the Omarchy Display widget.",
-  "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "Panel.qml" },
+  "description": "Screens tab for the Omarchy Display widget: arrangement map, extend / mirror / laptop only / screen only, per-screen resolution and rotation, and a Super+P picker.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
   "barWidget": {
     "displayName": "Display Layouts",
-    "description": "Brightness, scale and text size, plus extend / mirror / TV only / laptop only for external screens.",
+    "description": "Arrange screens on a map, switch layouts, set resolution and rotation, move windows between screens, plus brightness, text size and scale.",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "right"

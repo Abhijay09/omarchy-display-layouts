@@ -1,24 +1,30 @@
 # Display Layouts
 
-<img src="preview.png" alt="Display popup with the LAYOUT row" width="320" align="right">
+<img src="preview.png" alt="The Screens tab of the Display popup" width="340" align="right">
 
-An Omarchy bar widget that adds Windows `Win+P` style layouts to the Display popup.
+A better display popup for Omarchy. It started as a Windows `Win+P` style layout
+picker for my laptop and TV setup and grew into one place for everything about
+your screens.
 
-I use a laptop and a TV at the same time: a movie on the TV, work on the laptop.
-Omarchy's Display widget can enable or disable screens, but there was no single
-place to say "extend to the right" or "TV only". This is the stock widget with
-a **LAYOUT** row added.
+It replaces the stock Display widget and keeps all of it: brightness, text size,
+scale, and switching screens on or off now live on a **Display** tab. The new
+**Screens** tab adds:
 
-| Button | What it does |
+- **Arrangement map.** Your screens drawn to scale. Click one to select it, drag
+  an external screen to another side of the laptop and it snaps there.
+- **Layouts.** Extend, Mirror, Laptop only or Screen only, plus which side the
+  second screen goes on (left, right, above, below).
+- **Per-screen settings.** Resolution and refresh rate, rotation, and buttons to
+  send the active window or the current workspace to that screen.
+- **Identify.** Flashes each screen's name and resolution on that screen.
+- **Remember this setup.** Keeps placement, resolution and scale across a reload
+  or reboot.
+
+There is also a full-screen picker you can open with **Super + P**.
+
+| | |
 | --- | --- |
-| Extend → | TV becomes a second desktop to the right of the laptop |
-| ← Extend | Same, but on the left |
-| Mirror | Both screens show the same picture |
-| TV only | Laptop screen off |
-| Laptop only | External screen off |
-
-Everything else (brightness, text size, scale, the DISPLAYS list) is unchanged.
-With only one screen connected the buttons are dimmed, as in the screenshot.
+| ![Display tab](docs/display-tab.png) | ![Super+P picker](docs/overlay.png) |
 
 ## Install
 
@@ -26,13 +32,30 @@ With only one screen connected the buttons are dimmed, as in the screenshot.
 omarchy plugin add https://github.com/Abhijay09/omarchy-display-layouts --enable
 ```
 
-This widget **replaces** the built-in Display widget (it keeps the same
-`omarchy.monitor` IPC target so the brightness keys keep working), so don't
-enable both. If `--enable` doesn't swap it in on your bar, move it by hand:
+This replaces the built-in Display widget (it keeps the same `omarchy.monitor`
+IPC target, so the brightness keys keep working), so don't enable both. If
+`--enable` doesn't swap it in on your bar:
 
 ```
 omarchy bar move io.github.abhijay09.display-layouts --section right
 ```
+
+If the popup still looks like the old one, run `omarchy restart shell`. The shell
+doesn't always pick up a changed plugin on its own.
+
+### Super + P
+
+A plugin can't add keybindings, so add this line to `~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + P", "Project display", "omarchy-shell omarchy.monitor project")
+```
+
+Press it once to open the picker with your current layout selected. Press it again
+to step to the next layout, or use the arrow keys, Tab, `1`-`4`, `S` to change the
+side and Esc to cancel. Enter or a click applies the layout. Letting go of Super
+applies it too, as long as you stepped with the key and your compositor forwards the
+key release to the picker. Enter always works.
 
 ## Requirements
 
@@ -40,39 +63,67 @@ omarchy bar move io.github.abhijay09.display-layouts --section right
 - `hyprctl` and `jq` (both ship with Omarchy)
 - Omarchy's own `omarchy-hyprland-monitor-*` and `omarchy-notification-send` commands
 
-Nothing else to install, and the widget doesn't touch your Hyprland config files.
+Nothing else to install.
 
 ## Remove
 
+If you turned on "Remember this setup", turn it off first so the file it wrote is
+deleted:
+
 ```
+~/.config/omarchy/plugins/io.github.abhijay09.display-layouts/displayctl remember off
 omarchy plugin remove io.github.abhijay09.display-layouts
 omarchy plugin enable omarchy.monitor right
 ```
 
-The second line puts the stock Display widget back on the right side of the bar.
+The last line puts the stock Display widget back. Also remove the `SUPER + P` line
+from `bindings.lua` if you added it.
 
 ## How it works
 
-`layout.sh` finds the laptop panel and the first external output, then drives
-Omarchy's own commands (`omarchy-hyprland-monitor-internal`,
-`omarchy-hyprland-monitor-internal-mirror`) plus `hyprctl eval hl.monitor(...)`
-for placement. It needs the Lua Hyprland config Omarchy ships now, since
-`hyprctl keyword` is rejected there.
+`displayctl` is a small shell script that does the actual work. Run it without
+arguments for the list of commands.
 
-Layouts last for the session. A `hyprctl reload` or a reboot goes back to
-Hyprland's default placement.
+| Command | |
+| --- | --- |
+| `displayctl layout extend [left\|right\|up\|down]` | second screen as extra desktop |
+| `displayctl layout mirror` / `internal` / `external` | mirror, laptop only, screen only |
+| `displayctl side <output> <side>` | move a screen to a side of the laptop |
+| `displayctl mode <output> <WxH@Hz>` | resolution and refresh rate |
+| `displayctl scale <output> <factor>` / `rotate <output> <0-3>` | scale, rotation |
+| `displayctl send <output>` / `workspace <output>` | move the active window / workspace |
+| `displayctl remember on\|off\|status` | keep the setup after a reload |
+
+It reads the current state from `hyprctl monitors all -j`, changes one thing and
+carries the rest over, and applies it with `hyprctl eval hl.monitor(...)` and
+Omarchy's own mirror and laptop-screen commands. External screens are always placed
+with `auto-left/right/up/down`, so changing a screen's size or rotation never
+leaves it overlapping the laptop screen. `DISPLAYCTL_DRY=1` prints the Lua instead
+of running it.
+
+"Remember this setup" writes `~/.local/state/omarchy/toggles/hypr/display-layouts.lua`,
+which Omarchy already loads on every reload. It covers placement, resolution, scale
+and rotation of external screens. Mirroring and switching the laptop screen off are
+remembered by Omarchy itself, and a switched-off external screen is deliberately not
+saved, so plugging in a TV later doesn't leave it dead.
+
+Run the model tests with `node test/model.test.js`.
 
 ## Known issues
 
-- Tested on one machine (Lenovo, Intel + NVIDIA hybrid, TV over HDMI). Other setups may need
+- Developed on one machine (Lenovo, Intel + NVIDIA hybrid). Other setups may need
   tweaks, and issues or PRs are welcome.
 - **HDMI on hybrid-GPU laptops:** on many of these the HDMI port hangs off the
   NVIDIA GPU. If the GPU is in an integrated or VFIO mode (for example via
-  `supergfxctl`), the TV gets no signal and Hyprland never sees the output.
-  Switch to Hybrid mode and log back in. Hyprland only enumerates GPUs at
-  startup, so a re-login is needed.
-- The TV scale is `auto`. If it looks off, set one in the DISPLAYS section.
-- No keyboard navigation for the LAYOUT buttons yet, mouse only.
+  `supergfxctl`), the TV gets no signal and Hyprland never sees the output. Switch
+  to Hybrid mode and log back in. Hyprland only looks for GPUs at startup, so a
+  re-login is needed.
+- Dragging on the map only places a screen on a side of the laptop screen. There is
+  no free positioning or alignment offset.
+- With more than one external screen only the first one is handled by the layout
+  cards. The map and the per-screen settings work for all of them.
+- The Display tab keeps the stock widget's keyboard navigation. The Screens tab is
+  mouse-driven, apart from the Super + P picker.
 
 ## Credits
 
