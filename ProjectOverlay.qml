@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import qs.Commons
@@ -30,6 +31,18 @@ Item {
   // so a quick tap of Super+P never closes it before it can be used.
   property bool cycled: false
 
+  // Closes itself when nothing is chosen. Any key, hover or click starts the
+  // countdown over, so it never closes while it is being used.
+  readonly property int idleMs: 10000
+  property real remaining: 1
+  function touch() {
+    if (!ov.opened) return
+    idle.restart()
+    countdown.restart()
+  }
+  Timer { id: idle; interval: ov.idleMs; onTriggered: ov.close() }
+  NumberAnimation { id: countdown; target: ov; property: "remaining"; from: 1; to: 0; duration: ov.idleMs }
+
   function usable(i) { return ov.canSwitch || ov.modes[i] === "internal" }
 
   function open() {
@@ -38,9 +51,10 @@ Item {
     ov.pendingSide = ov.side
     ov.cycled = false
     ov.opened = true
+    ov.touch()
     Qt.callLater(function() { if (ov.opened) keys.forceActiveFocus() })
   }
-  function close() { ov.opened = false; ov.cycled = false }
+  function close() { ov.opened = false; ov.cycled = false; idle.stop(); countdown.stop() }
   function toggle() { ov.opened ? ov.close() : ov.open() }
 
   // What the Super+P keybinding calls. First press opens the picker; while it
@@ -55,6 +69,7 @@ Item {
   function commit() { if (ov.opened) ov.apply() }
 
   function step(dir) {
+    ov.touch()
     for (var n = 1; n <= ov.modes.length; n++) {
       var i = (ov.index + dir * n + ov.modes.length * 4) % ov.modes.length
       if (ov.usable(i)) { ov.index = i; return }
@@ -67,11 +82,13 @@ Item {
     if (mode !== ov.current || mode === "extend") ov.chosen(mode, ov.pendingSide)
   }
   function nextSide() {
+    ov.touch()
     var order = ["right", "down", "left", "up"]
     ov.pendingSide = order[(order.indexOf(ov.pendingSide) + 1) % order.length]
   }
 
   PanelWindow {
+    id: win
     visible: ov.opened
     screen: ov.targetScreen
     anchors { top: true; bottom: true; left: true; right: true }
@@ -81,12 +98,70 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
-    Rectangle {
+    // Frosted backdrop: one frame of the screen is captured as the picker
+    // opens (while the window is still see-through, so it doesn't capture
+    // itself), blurred, and tinted. If the capture never arrives, a plain dark
+    // scrim takes over so the text stays readable.
+    Item {
+      id: backdrop
       anchors.fill: parent
-      color: Qt.rgba(0.02, 0.02, 0.04, 0.86)
+      property bool ready: false
+      property bool gaveUp: false
       opacity: ov.opened ? 1 : 0
-      Behavior on opacity { NumberAnimation { duration: 140 } }
-      MouseArea { anchors.fill: parent; onClicked: ov.close() }
+      Behavior on opacity { NumberAnimation { duration: 160 } }
+
+      Connections {
+        target: win
+        function onVisibleChanged() { if (!win.visible) { backdrop.ready = false; backdrop.gaveUp = false } }
+      }
+      Timer { running: ov.opened && !backdrop.ready; interval: 700; onTriggered: backdrop.gaveUp = true }
+
+      Loader {
+        id: shot
+        anchors.fill: parent
+        active: ov.opened
+        sourceComponent: ScreencopyView {
+          captureSource: win.screen
+          live: false
+          paintCursor: false
+          onHasContentChanged: if (hasContent) backdrop.ready = true
+        }
+      }
+
+      MultiEffect {
+        anchors.fill: parent
+        source: shot.item
+        visible: shot.item !== null
+        autoPaddingEnabled: false
+        blurEnabled: true
+        blur: 1.0
+        blurMax: 64
+        blurMultiplier: 1.4
+        brightness: -0.1
+        saturation: -0.15
+        opacity: backdrop.ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+      }
+
+      Rectangle {
+        anchors.fill: parent
+        color: Qt.rgba(0.03, 0.04, 0.07, 0.5)
+        opacity: backdrop.ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+      }
+      Rectangle {
+        anchors.fill: parent
+        color: Qt.rgba(0.02, 0.02, 0.04, 0.86)
+        opacity: backdrop.gaveUp && !backdrop.ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+      }
+
+      MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        onClicked: ov.close()
+        onPositionChanged: ov.touch()
+      }
     }
 
     Item {
@@ -95,6 +170,7 @@ Item {
       focus: true
 
       Keys.onPressed: function(e) {
+        ov.touch()
         switch (e.key) {
         case Qt.Key_Escape: ov.close(); break
         case Qt.Key_P:
@@ -174,6 +250,7 @@ Item {
           foreground: ov.foreground
           accent: ov.accent
           fontFamily: ov.fontFamily
+          onHoverModeChanged: ov.touch()
           onLayoutChosen: function(mode) { ov.index = ov.modes.indexOf(mode); ov.apply() }
           onSideChosen: function(s) { ov.pendingSide = s; ov.index = 0 }
         }
@@ -185,6 +262,18 @@ Item {
           color: Qt.rgba(1, 1, 1, 0.6)
           font.family: ov.fontFamily
           font.pixelSize: Style.font.bodySmall
+        }
+
+        // Time left before it closes by itself.
+        Item {
+          width: parent.width
+          height: Math.max(2, Style.space(2))
+          Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(parent.width, Style.space(260)) * ov.remaining
+            height: parent.height
+            color: Qt.rgba(1, 1, 1, 0.35)
+          }
         }
       }
     }

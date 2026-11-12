@@ -62,7 +62,7 @@ Column {
         height: root.big ? Style.space(140) : Style.space(72)
         color: isCurrent ? Style.selectedFillFor(root.foreground, root.accent)
              : (mouse.containsMouse || cursor) && usable ? Style.hoverFillFor(root.foreground, root.accent)
-             : Util.alpha(root.foreground, 0.035)
+             : root.big ? Qt.rgba(0.04, 0.05, 0.08, 0.5) : Util.alpha(root.foreground, 0.035)
         border.width: isCurrent || cursor ? Math.max(2, Style.space(2)) : Math.max(1, Style.space(1))
         border.color: isCurrent || cursor ? root.accent : Util.alpha(root.foreground, mouse.containsMouse && usable ? 0.4 : 0.22)
         radius: Style.cornerRadius > 0 ? Style.space(4) : 0
