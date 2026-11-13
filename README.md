@@ -1,6 +1,6 @@
 # Display Layouts
 
-<img src="preview.png" alt="The Screens tab of the Display popup" width="340" align="right">
+<p align="center"><img src="preview.png" alt="Display Layouts: a to-scale screen map, layouts and the Super+P picker" width="900"></p>
 
 A better display popup for Omarchy. It started as a Windows `Win+P` style layout
 picker for my laptop and TV setup and grew into one place for everything about
@@ -23,9 +23,13 @@ scale, and switching screens on or off now live on a **Display** tab. The new
 There is also a full-screen picker you can open with **Super + P**. It frosts
 the screen behind it and closes by itself after 10 seconds if you choose nothing.
 
-| | |
+| Screens tab | Display tab |
 | --- | --- |
-| ![Display tab](docs/display-tab.png) | ![Super+P picker](docs/overlay.png) |
+| <img src="docs/screens-tab.png" width="360"> | <img src="docs/display-tab.png" width="360"> |
+
+The Super + P picker:
+
+![Super+P picker](docs/overlay.png)
 
 ## Install
 

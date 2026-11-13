@@ -1,0 +1,89 @@
+<!doctype html>
+<!-- Source of ../../preview.png. Regenerate from the repo root with:
+     chromium --headless=new --no-sandbox --allow-file-access-from-files --hide-scrollbars \
+       --force-device-scale-factor=1 --window-size=1600,900 --virtual-time-budget=4000 \
+       --screenshot=preview.png file://$PWD/docs/thumbnail/index.html -->
+<html><head><meta charset="utf-8">
+<title>Display Layouts thumbnail</title>
+<style>
+  :root { --base:#11111b; --panel:#1e1e2e; --surface:#313244; --text:#cdd6f4; --dim:#7f849c; --sub:#a6adc8;
+          --blue:#89b4fa; --lav:#b4befe; --mauve:#cba6f7; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1600px; height: 900px; background: var(--base); overflow: hidden;
+               font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace; color: var(--text); }
+  .stage { position: relative; width: 1600px; height: 900px; overflow: hidden;
+    background:
+      radial-gradient(900px 600px at 8% 0%, rgba(137,180,250,.20), transparent 60%),
+      radial-gradient(800px 700px at 100% 100%, rgba(203,166,247,.18), transparent 60%),
+      radial-gradient(700px 500px at 70% 10%, rgba(180,190,254,.08), transparent 65%),
+      var(--base); }
+  .stage::before { content:""; position:absolute; inset:0; opacity:.5;
+    background-image: radial-gradient(rgba(205,214,244,.10) 1px, transparent 1.4px);
+    background-size: 28px 28px;
+    -webkit-mask-image: linear-gradient(100deg, #000 0%, transparent 62%); mask-image: linear-gradient(100deg, #000 0%, transparent 62%); }
+
+  .left { position:absolute; left:96px; top:64px; width:800px; }
+  .kicker { display:inline-flex; align-items:center; gap:12px; font-size:16px; letter-spacing:.2em; color:var(--blue);
+            padding:8px 16px; border:1px solid rgba(137,180,250,.4); background:rgba(137,180,250,.08); }
+  h1 { margin-top:22px; font-size:88px; line-height:1; font-weight:800; letter-spacing:-.02em; }
+  h1 span { background:linear-gradient(90deg,var(--blue),var(--mauve)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tag { margin-top:18px; font-size:36px; font-weight:700; color:var(--lav); }
+  .sub { margin-top:10px; font-size:21px; color:var(--dim); }
+  ul { list-style:none; padding:0; margin-top:28px; display:grid; gap:15px; }
+  li { display:flex; align-items:center; gap:18px; font-size:25px; color:var(--text); }
+  li svg { flex:none; width:30px; height:30px; stroke:var(--blue); fill:none; stroke-width:1.8; }
+  li b { color:var(--lav); font-weight:700; }
+
+  .strip { position:absolute; left:96px; top:566px; width:760px; }
+  .strip .cap { font-size:14px; letter-spacing:.2em; color:var(--dim); margin-bottom:10px; display:flex; gap:12px; align-items:center; }
+  .strip .cap kbd { font:inherit; color:var(--blue); border:1px solid rgba(137,180,250,.45); padding:2px 8px; letter-spacing:.08em; }
+  .strip img { width:760px; display:block; border:1px solid rgba(180,190,254,.28);
+               box-shadow:0 24px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(0,0,0,.4); }
+
+  /* the popup, at its natural 732 x 1143 screenshot size, then scaled */
+  .shot { position:absolute; left:990px; top:44px; width:732px; height:1143px; transform-origin: 0 0; transform: scale(.7);
+          box-shadow:0 40px 100px rgba(0,0,0,.65), 0 0 0 2px rgba(137,180,250,.9), 0 0 90px rgba(137,180,250,.25); }
+  .shot img { display:block; width:732px; height:1143px; }
+  .map { position:absolute; left:6px; top:214px; width:720px; height:236px; background:var(--panel); }
+  .scr { position:absolute; border:1px solid #767a91; background:#2c2d3e; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; text-align:center; }
+  .scr .ic { font-size:22px; color:var(--text); }
+  .scr .n { font-size:17px; font-weight:700; }
+  .scr .m { font-size:14px; color:#8e93a8; }
+  .scr .r { font-size:14px; color:#8e93a8; }
+  .lap { left:120px; top:24px; width:224px; height:140px; border:2px solid var(--blue); background:#3a3b4e; }
+  .lap .ic { color:var(--blue); }
+  .tv  { left:346px; top:6px; width:260px; height:146px; background:#33344a; border:2px solid var(--blue);
+         transform: translate(46px, 30px) scale(1.04); box-shadow:0 18px 40px rgba(0,0,0,.55); }
+  .drop { position:absolute; left:352px; top:24px; width:6px; height:140px; background:rgba(137,180,250,.6); }
+  .cursor { position:absolute; left:583px; top:158px; width:34px; height:34px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.6)); }
+  .hint { position:absolute; right:12px; top:-14px; font-size:14px; color:#8e93a8; }
+</style></head>
+<body><div class="stage">
+  <div class="left">
+    <div class="kicker">󰍹&nbsp; OMARCHY &nbsp;·&nbsp; DISPLAY WIDGET</div>
+    <h1>Display <span>Layouts</span></h1>
+    <div class="tag">Every screen, one popup.</div>
+    <div class="sub">Plug in a TV. Arrange it, pick a layout, done.</div>
+    <ul>
+      <li><svg viewBox="0 0 32 32"><rect x="2" y="7" width="13" height="12"/><rect x="17" y="3" width="13" height="16" /><path d="M5 25h7M20 25h7"/></svg><span>A <b>to-scale map</b>: drag a screen to any side</span></li>
+      <li><svg viewBox="0 0 32 32"><rect x="3" y="3" width="11" height="11"/><rect x="18" y="3" width="11" height="11"/><rect x="3" y="18" width="11" height="11"/><rect x="18" y="18" width="11" height="11"/></svg><span><b>Extend, mirror,</b> laptop or screen only</span></li>
+      <li><svg viewBox="0 0 32 32"><path d="M3 8h26M3 16h26M3 24h26"/><circle cx="10" cy="8" r="3" fill="#11111b"/><circle cx="22" cy="16" r="3" fill="#11111b"/><circle cx="13" cy="24" r="3" fill="#11111b"/></svg><span><b>Resolution,</b> rotation, send a window over</span></li>
+      <li><svg viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="22" rx="1"/><path d="M12 22V11h5a3.5 3.5 0 0 1 0 7h-5"/></svg><span><b>Super + P</b> frosted picker</span></li>
+    </ul>
+  </div>
+
+  <div class="strip">
+    <div class="cap"><kbd>SUPER + P</kbd> THE PICKER</div>
+    <img src="../overlay.png" alt="">
+  </div>
+
+  <div class="shot">
+    <img src="../screens-tab.png" alt="">
+    <div class="map">
+      <div class="drop"></div>
+      <div class="scr lap"><div class="ic">󰌢 &nbsp;<span style="color:var(--blue);font-size:15px">●</span></div><div class="n">eDP-2</div><div class="m">Samsung ATNA60HU01-0</div><div class="r">2560 x 1600</div></div>
+      <div class="scr tv"><div class="ic">󰍹</div><div class="n">HDMI-A-1</div><div class="m">Samsung U32R5</div><div class="r">3840 x 2160</div></div>
+      <svg class="cursor" viewBox="0 0 24 24"><path d="M4 2l15 10-6.5 1.2L16 21l-3 1-3.5-8L4 18z" fill="#fff" stroke="#11111b" stroke-width="1.4" stroke-linejoin="round"/></svg>
+    </div>
+  </div>
+</div></body></html>
